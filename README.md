@@ -14,3 +14,5 @@ MIT License
 ## TODO
 - add examples (in the mean time, you can see how we're using it in
 the TTS section here, https://github.com/CoughDrop/coughdrop/blob/master/app/frontend/app/utils/capabilities.js)
+- specs (stop judging me, I'm not a native app developer)
+- move android license to a config file so nobody has to rewrite code
