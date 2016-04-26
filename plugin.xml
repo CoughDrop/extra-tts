@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin
+  xmlns="http://apache.org/cordova/ns/plugins/1.0"
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  id="com.mycoughdrop.coughdrop.extra-tts"
+  version="0.0.1"
+  >
+
+  <name>ExtraTTS</name>
+
+  <description>
+    Plugin to enable extensible TTS
+  </description>
+
+  <license>MIT</license>
+
+  <engines>
+    <engine name="cordova" version=">=3.0.0" />
+  </engines>
+
+  <!-- android -->
+  <platform name="android">
+    <config-file target="res/xml/config.xml" parent="/*">
+      <feature name="ExtraTTS">
+          <param 
+            name="android-package" 
+            value="com.mycoughdrop.coughdrop.ExtraTTS" 
+            />
+      </feature>
+    </config-file>
+    <source-file
+      src="src/android/ExtraTTS.java" 
+      target-dir="src/com/mycoughdrop/coughdrop" 
+      />
+   </platform>
+   
+  <platform name="ios">
+    <source-file src="ExtraTTS.m" />
+    <source-file src="ExtraTTS.h" />
+
+    <config-file target="config.xml" parent="/*">
+      <feature name="ExtraTTS">
+        <param name="ios-package" value="ExtraTTS"/>
+      </feature>
+    </config-file>
+  </platform>
+</plugin>
