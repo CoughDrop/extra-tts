@@ -14,6 +14,7 @@
 @property CDVInvokedUrlCommand *speakTextCommand;
 @property NSMutableDictionary *speakTextParams;
 @property BOOL debug;
+@property NSUInteger max_voices;
 @end
 
 @implementation ExtraTTS
@@ -27,6 +28,7 @@
     // call success when done, error if there were any problems
     
     self.isReady = false;
+    self.max_voices = 2;
     
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSURL *documentsURL = [[fileManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
@@ -133,15 +135,17 @@
     
     NSArray *voices = [self availableVoices];
     NSMutableArray *results = [NSMutableArray new];
+    NSUInteger index = 0;
     for (NSString *voice in voices) {
         NSDictionary *attributes = [AcapelaSpeech attributesForVoice:voice];
         [results addObject:@{
                              @"language" : attributes[AcapelaVoiceLanguage],
                              @"locale" : attributes[AcapelaVoiceLocaleIdentifier],
-                             @"active" : @YES,
+                             @"active" : (index < self.max_voices) ? @YES : @NO,
                              @"name" : voice,
                              @"voice_id" : [NSString stringWithFormat:@"acap:%@", voice]
                              }];
+        index++;
     }
     
     [self initializeAndLoadVoices];
@@ -419,9 +423,9 @@
 - (void)initializeAndLoadVoices
 {
     NSArray *voices = [self availableVoices];
-    NSArray *voicesToAdd = [voices subarrayWithRange:NSMakeRange(0, MIN(voices.count, 2))];
+    NSArray *voicesToAdd = [voices subarrayWithRange:NSMakeRange(0, MIN(voices.count, self.max_voices))];
     if (voicesToAdd.count > 0) {
-        NSString *voicesString = [voices componentsJoinedByString:@","];
+        NSString *voicesString = [voicesToAdd componentsJoinedByString:@","];
         if (self.speech) {
             [self.speech setVoice:voicesString];
         } else {
