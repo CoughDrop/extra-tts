@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "name": "com.coughdrop.cordova.extra-tts",
+  "cordova_name": "ExtraTTS",
+  "description": "Plugin to enable extensible TTS",
+  "license": "MIT",
+  "repo": "https://github.com/CoughDrop/extra-tts/tree/master",
+  "keywords": [
+    "cordova"
+  ],
+  "platforms": [
+    "ios",
+    "android"
+  ],
+  "engines": [
+    {
+      "name": "cordova",
+      "version": ">=3.0.0"
+    }
+  ]
+}
