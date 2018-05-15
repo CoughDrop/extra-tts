@@ -13,8 +13,9 @@
 @property ZipFileDownloader *zipFileDownloader;
 @property CDVInvokedUrlCommand *speakTextCommand;
 @property NSMutableDictionary *speakTextParams;
+@property (copy) NSString *lastVoice;
 @property BOOL debug;
-@property NSUInteger max_voices;
+@property NSUInteger maxVoices;
 @end
 
 @implementation ExtraTTS
@@ -28,7 +29,7 @@
     // call success when done, error if there were any problems
     
     self.isReady = false;
-    self.max_voices = 2;
+    self.maxVoices = 5;
     
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSURL *documentsURL = [[fileManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
@@ -39,8 +40,8 @@
         }
         // mark the voices folder as not backed up
         [self addSkipBackupAttributeToItemAtURL:self.voicesFolderURL];
-//        NSURL *backupUrl =[documentsURL URLByAppendingPathComponent:@"Backups"];
-//        [self addSkipBackupAttributeToItemAtURL:backupUrl];
+        //        NSURL *backupUrl =[documentsURL URLByAppendingPathComponent:@"Backups"];
+        //        [self addSkipBackupAttributeToItemAtURL:backupUrl];
         [AcapelaSpeech setVoicesDirectoryArray:@[self.voicesFolderURL.path]];
     } else {
         self.isReady = false;
@@ -141,7 +142,7 @@
         [results addObject:@{
                              @"language" : attributes[AcapelaVoiceLanguage],
                              @"locale" : attributes[AcapelaVoiceLocaleIdentifier],
-                             @"active" : (index < self.max_voices) ? @YES : @NO,
+                             @"active" : (index < self.maxVoices) ? @YES : @NO,
                              @"name" : voice,
                              @"voice_id" : [NSString stringWithFormat:@"acap:%@", voice]
                              }];
@@ -323,6 +324,10 @@
             if ([voiceId hasPrefix:prefix]) {
                 voiceId = [voiceId stringByReplacingCharactersInRange:NSMakeRange(0, prefix.length) withString:@""];
             }
+            if (![self.lastVoice isEqualToString:voiceId]) {
+                [self.speech setVoice:voiceId];
+                self.lastVoice = voiceId;
+            }
             NSString *modifiedText = [NSString stringWithFormat:@"\\vce=speaker=%@\\%@", voiceId, text];
             
             self.speakTextCommand = command;
@@ -423,7 +428,7 @@
 - (void)initializeAndLoadVoices
 {
     NSArray *voices = [self availableVoices];
-    NSArray *voicesToAdd = [voices subarrayWithRange:NSMakeRange(0, MIN(voices.count, self.max_voices))];
+    NSArray *voicesToAdd = [voices subarrayWithRange:NSMakeRange(0, MIN(voices.count, self.maxVoices))];
     if (voicesToAdd.count > 0) {
         NSString *voicesString = [voicesToAdd componentsJoinedByString:@","];
         if (self.speech) {
