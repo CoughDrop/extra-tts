@@ -93,19 +93,21 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     TTS = new acattsandroid(this.cordova.getActivity().getApplicationContext(),this,null);
     TTS.setLog(true);
 
+    // NOTE: set this to false and paste in your new license value
+    boolean demo_license = true;
 		TTS.setLicense(0x444b4453,0x11de4055,"\"5263 0 SDKD #EVALUATION#SDK-demo-Acapela-group\"\nVGm3Ie@Oi$56NUOwSUZxje%Zi@M%ejX2!eXhovWviS2ZZQgAl2gt8RJCejPrk8k#\nTaUxVYANC%RG39EaCr8qOhBNmw@BI%JA3gn9yi%2NkMluDnq\nY6Z7o8CzkPK5p2G$xNFobT##\n"); 			
-
 	    
-    // Remove this alert dialog once your commercial license is set
- 		AlertDialog.Builder LicenseDialog = new AlertDialog.Builder(cordova.getActivity());
- 		LicenseDialog.setTitle("Evaluation license");
- 		LicenseDialog.setMessage("You'll have to insert your own license in the source code to use your voices");
- 		LicenseDialog.setPositiveButton("OK",new DialogInterface.OnClickListener() {
- 			public void onClick(DialogInterface dialog, int which) {
+    if(demo_license) {
+      AlertDialog.Builder LicenseDialog = new AlertDialog.Builder(cordova.getActivity());
+      LicenseDialog.setTitle("Evaluation license");
+      LicenseDialog.setMessage("You'll have to insert your own license in the source code to use your voices");
+      LicenseDialog.setPositiveButton("OK",new DialogInterface.OnClickListener() {
+        public void onClick(DialogInterface dialog, int which) {
 
- 			}
- 		});
- 		LicenseDialog.show();
+        }
+      });
+      LicenseDialog.show();
+    }
  		
     this.ready = true;
     callbackContext.success("cool beans");
