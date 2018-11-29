@@ -148,7 +148,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
           res.put(obj);
         }
       }
-      TTS.load(langs);
+      TTS.load(langs,"MODE=prep_full");
       TTS.getLanguage();
       callbackContext.success(res);
     }
