@@ -47,6 +47,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
   private acattsandroid TTS = null;
   private boolean ready = false;
   private String storageLocation = null;
+  private String loadedVoice = null;
   private CallbackContext lastCallback = null;
   private JSONObject lastTextOpts = null;
   private double lastDownloadPercent = -1;  
@@ -77,11 +78,13 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
       deleteVoice(args, callbackContext);
       return true;
     } else if(action.equals("speakText")) {
-      speakText(args, callbackContext);
+      speakText(args, callbackContext, false);
       return true;
     } else if(action.equals("stopSpeakingText")) {
       stopText(callbackContext);
       return true;
+    } else if(action.equals("renderText")) {
+      speakText(args, callbackContext, true);
     }
     return false;
   }
@@ -95,7 +98,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
 
     // NOTE: set this to false and paste in your new license value
     boolean demo_license = true;
-		TTS.setLicense(0x444b4453,0x11de4055,"\"5263 0 SDKD #EVALUATION#SDK-demo-Acapela-group\"\nVGm3Ie@Oi$56NUOwSUZxje%Zi@M%ejX2!eXhovWviS2ZZQgAl2gt8RJCejPrk8k#\nTaUxVYANC%RG39EaCr8qOhBNmw@BI%JA3gn9yi%2NkMluDnq\nY6Z7o8CzkPK5p2G$xNFobT##\n"); 			
+    TTS.setLicense(0x444b4453,0x11de4055,"\"5263 0 SDKD #EVALUATION#SDK-demo-Acapela-group\"\nVGm3Ie@Oi$56NUOwSUZxje%Zi@M%ejX2!eXhovWviS2ZZQgAl2gt8RJCejPrk8k#\nTaUxVYANC%RG39EaCr8qOhBNmw@BI%JA3gn9yi%2NkMluDnq\nY6Z7o8CzkPK5p2G$xNFobT##\n"); 
 	    
     if(demo_license) {
       AlertDialog.Builder LicenseDialog = new AlertDialog.Builder(cordova.getActivity());
@@ -129,7 +132,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     } else {
       String[] paths = {storageLocation};
       String[] currentVoices = TTS.getVoicesList(paths);
-      String langs = "";
+      String lang = null;
       JSONArray res = new JSONArray();
       for(String voice : currentVoices) {
         Map<String, String> voiceInfo = TTS.getVoiceInfo(voice);
@@ -140,15 +143,16 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
           obj.put("active", true);
           obj.put("name", voice);
           obj.put("voice_id", "acap:" + voice);
-          if(langs.equals("")) {
-            langs += voice;
+          if(lang == null) {
+            lang = voice;
           } else {
-            langs += "," + voice;
+            // langs += "," + voice;
           }
           res.put(obj);
         }
       }
-      TTS.load(langs,"MODE=prep_full");
+      TTS.load(lang,"");
+      loadedVoice = lang;
       TTS.getLanguage();
       callbackContext.success(res);
     }
@@ -269,7 +273,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     } 
   } 
     
-  private void speakText(JSONArray args, CallbackContext callbackContext) throws JSONException {
+  private void speakText(JSONArray args, CallbackContext callbackContext, boolean renderToFile) throws JSONException {
     if(!this.ready) { 
       callbackContext.error("not ready"); 
     } else {
@@ -290,7 +294,13 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
       try {
         voiceId = json.getString("voice_id");
       } catch(JSONException e) { }
-      
+
+      if((loadedVoice == null || !loadedVoice.equals(voiceId)) && voiceId != null) {
+        TTS.load(voiceId.replaceAll("acap:", ""),"");
+        loadedVoice = voiceId;
+        TTS.getLanguage();
+      }
+
       int pitch = (int) Math.min(Math.max(pitchPercent * 100, 70), 130);
       int rate = (int) Math.min(Math.max(ratePercent * 120, 50), 400);
       TTS.setPitch(pitch); // from 70 to 130
@@ -305,14 +315,20 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
       opts.put("modified_volume", null);
       opts.put("text", text);
       if(voiceId != null) {
-        text = "\\vce=speaker=" + voiceId + "\\" + text;
+        //text = "\\vce=speaker=Ella\\" + text;
       }
       opts.put("modified_text", text);
-      int idx = TTS.speak(text);
-      opts.put("text_reference", idx);
-      Log.d(TAG, "Text " + idx + " speaking");
-      lastCallback = callbackContext;
-      lastTextOpts = opts;
+      if(renderToFile) {
+        String filePath = cordova.getActivity().getApplicationContext().getExternalFilesDir(null).getAbsolutePath() + "/audio_" + voiceId.replaceAll(":", "_") + ".wav";
+        TTS.synthesizeToFile(text, filePath);
+        callbackContext.success(filePath);
+      } else {
+        int idx = TTS.speak(text);
+        opts.put("text_reference", idx);
+        Log.d(TAG, "Text " + idx + " speaking");
+        lastCallback = callbackContext;
+        lastTextOpts = opts;
+      }
     }
   }
   
