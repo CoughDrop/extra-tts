@@ -1,5 +1,5 @@
 {
-  "version": "0.0.2",
+  "version": "0.0.3",
   "name": "com.coughdrop.cordova.extra-tts",
   "cordova_name": "ExtraTTS",
   "description": "Plugin to enable extensible TTS",

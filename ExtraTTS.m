@@ -325,7 +325,7 @@
                 voiceId = [voiceId stringByReplacingCharactersInRange:NSMakeRange(0, prefix.length) withString:@""];
             }
             if (![self.lastVoice isEqualToString:voiceId]) {
-                [self.speech setVoice:voiceId];
+                [self.speech setVoice:voiceId license:self.licence.license userid:self.licence.user password:self.licence.passwd mode:@""];
                 self.lastVoice = voiceId;
             }
             NSString *modifiedText = [NSString stringWithFormat:@"\\vce=speaker=%@\\%@", voiceId, text];
@@ -432,9 +432,9 @@
     if (voicesToAdd.count > 0) {
         NSString *voicesString = [voicesToAdd componentsJoinedByString:@","];
         if (self.speech) {
-            [self.speech setVoice:voicesString];
+            [self.speech setVoice:voicesString license:self.licence.license userid:self.licence.user password:self.licence.passwd mode:@""];
         } else {
-            self.speech = [[AcapelaSpeech alloc] initWithVoice:voicesString license:self.licence];
+            self.speech = [[AcapelaSpeech alloc] initWithVoice:voicesString license:self.licence mode:@""];
         }
         [self.speech setDelegate:self];
     }
