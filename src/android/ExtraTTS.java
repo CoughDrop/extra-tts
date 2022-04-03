@@ -228,21 +228,27 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
               double totalEntries = 60;
               double nEntries = 0;
               while ((ze = zin.getNextEntry()) != null) { 
-                nEntries += 1;
-                Log.d(TAG, "Unzipping " + ze.getName()); 
+                File f = new File(storageLocation, ze.getName());
+                String canonicalPath = f.getCanonicalPath();
+                if (!canonicalPath.startsWith(storageLocation)) {
+                  // SecurityException, or ignore file
+                } else {
+                  nEntries += 1;
+                  Log.d(TAG, "Unzipping " + ze.getName()); 
 
-                if(ze.isDirectory()) { 
-                  dirChecker(storageLocation + ze.getName()); 
-                } else { 
-                  FileOutputStream fout = new FileOutputStream(storageLocation + ze.getName()); 
-            
-                  for (int c = zin.read(data); c != -1; c = zin.read(data)) { 
-                    fout.write(data, 0, c); 
+                  if(ze.isDirectory()) { 
+                    dirChecker(storageLocation + ze.getName()); 
+                  } else { 
+                    FileOutputStream fout = new FileOutputStream(storageLocation + ze.getName()); 
+              
+                    for (int c = zin.read(data); c != -1; c = zin.read(data)) { 
+                      fout.write(data, 0, c); 
+                    } 
+
+                    zin.closeEntry(); 
+                    fout.close(); 
                   } 
-
-                  zin.closeEntry(); 
-                  fout.close(); 
-                } 
+                }
                 downloadProgress(0.74 + Math.min(0.25, 0.25 * nEntries / totalEntries), callbackContext);
               } 
         
