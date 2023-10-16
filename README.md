@@ -7,6 +7,8 @@ need to raeach out to Acapela to get the needed libraries and license
 files. Demo packages should work for testing. For iOS you'll include
 the license file once you get it. For Android you'll need to replace the 
 code in the `init` method in ExtraTTS.java with your license code.
+Look for `TTS.setLicense` and you'll find the lines that need to be
+changed.
 
 ## Usage
 `cordova plugin add https://www.github.com/coughdrop/extra-tts.git`
