@@ -3,11 +3,13 @@
 // found in the LICENSE file.
 
 #import <Cordova/CDVPlugin.h>
+#import <AVFoundation/AVFoundation.h>
 
 @interface ExtraTTS : CDVPlugin
 
 - (void)status:(CDVInvokedUrlCommand*)command;
 - (void)getAvailableVoices:(CDVInvokedUrlCommand*)command;
+
 - (void)downloadVoice:(CDVInvokedUrlCommand*)command;
 - (void)deleteVoice:(CDVInvokedUrlCommand*)command;
 - (void)speakText:(CDVInvokedUrlCommand*)command;
