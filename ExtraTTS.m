@@ -1,5 +1,6 @@
 #import "ExtraTTS.h"
 #import <Cordova/CDV.h>
+#import <UIKit/UIKit.h>
 #import "acattsioslicense.h"
 #import "AcapelaLicense.h"
 #import "AcapelaSpeech.h"
@@ -16,14 +17,15 @@
 @property (copy) NSString *lastVoice;
 @property BOOL debug;
 @property NSUInteger maxVoices;
+@property (strong, nonatomic) NSTimer *speakMonitorTimer;
 @end
 
 @implementation ExtraTTS
 
 - (void)pluginInitialize
 {
-    self.debug = false;
-    if (self.debug) NSLog(@"ExtraTTS:init");
+    self.debug = true;
+    if (self.debug) NSLog(@"ExtraTTS:init (debug=ON)");
     
     // initialize the app, called only once. on Android I set the license here
     // call success when done, error if there were any problems
@@ -151,6 +153,20 @@
     
     [self initializeAndLoadVoices];
     
+    [self sendOKWithCommand:command array:results];
+}
+
+// Enumerate iOS system voices using AVSpeechSynthesisVoice
+- (void)getSystemVoices:(CDVInvokedUrlCommand*)command
+{
+    if (self.debug) NSLog(@"ExtraTTS:getSystemVoices");
+    NSMutableArray *results = [NSMutableArray array];
+    for (AVSpeechSynthesisVoice *v in [AVSpeechSynthesisVoice speechVoices]) {
+        NSDictionary *entry = @{ @"name": v.name ?: @"",
+                                 @"language": v.language ?: @"",
+                                 @"identifier": v.identifier ?: @"" };
+        [results addObject:entry];
+    }
     [self sendOKWithCommand:command array:results];
 }
 
@@ -282,9 +298,19 @@
         [self sendErrorWithCommand:command message:@"not ready"];
         return;
     }
+    // If a previous command exists, interrupt and clear it gracefully so a new speak can start
+    if (self.debug) NSLog(@"ExtraTTS:speakText ENTRY; isSpeaking=%@", ([self.speech isSpeaking] ? @"YES" : @"NO"));
     if (self.speakTextCommand) {
-        [self sendErrorWithCommand:command message:@"already speaking text"];
-        return;
+        if (self.debug) NSLog(@"ExtraTTS:speakText interrupting previous command");
+        if (self.speakTextParams) {
+            NSMutableDictionary *prev = [self.speakTextParams mutableCopy];
+            prev[@"interrupted"] = @YES;
+            [self sendOKWithCommand:self.speakTextCommand parameters:prev];
+        } else {
+            [self sendOKWithCommand:self.speakTextCommand message:nil];
+        }
+        self.speakTextCommand = nil;
+        self.speakTextParams = nil;
     }
     
     NSDictionary *JSONArgument = [command argumentAtIndex:0];
@@ -294,9 +320,27 @@
     if (rateNumber) {
         ratePercent = rateNumber.floatValue;
     }
-    // words to speak per minute (50 to 700). We max it out at 400
-    float rate = MIN(MAX(ratePercent * 120, 50), 400);
-    [self.speech setRate:rate];
+    // Map browser default (0.2) using device-specific base WPM
+    BOOL isPad = ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad);
+    float normalizedPercent;
+    if (isPad) {
+        // iPad: Map 0.2 -> 1.0 with higher sensitivity
+        normalizedPercent = ratePercent > 0.0f ? (ratePercent / 0.2f) : 1.0f;
+        if (normalizedPercent < 0.5f) {
+            normalizedPercent = 1.0f;
+        }
+    } else {
+        // iPhone: gentler curve so 1.4 does not explode to 7.0
+        // 0.2 -> 1.0; for each +1.0 over 0.2, add only +0.5 to normalized
+        float delta = ratePercent - 0.2f;
+        normalizedPercent = 1.0f + (delta * 0.5f);
+        // clamp to a reasonable range
+        if (normalizedPercent < 0.8f) normalizedPercent = 0.9f;
+        if (normalizedPercent > 2.0f) normalizedPercent = 2.0f;
+    }
+    float baseWPM = isPad ? 180.0f : 130.0f;
+    // words to speak per minute (50 to 400)
+    float rate = MIN(MAX(normalizedPercent * baseWPM, 50.0f), 400.0f);
     
     float pitchPercent = 1.0;
     NSNumber *pitchNumber = JSONArgument[@"pitch"];
@@ -305,7 +349,6 @@
     }
     // Shaping value from 70 to 140. We max out at 130
     float pitch = MIN(MAX(pitchPercent * 100, 70), 130);
-    [self.speech setVoiceShaping:pitch];
     
     float volumePercent = 1.0;
     NSNumber *volumeNumber = JSONArgument[@"volume"];
@@ -313,8 +356,7 @@
         volumePercent = volumeNumber.floatValue;
     }
     // From 15 to 200
-    float volume = MIN(MAX(ratePercent * 190, 15), 200);
-    [self.speech setVolume:volume];
+    float volume = MIN(MAX(volumePercent * 190, 15), 200);
     
     NSString *voiceId = JSONArgument[@"voice_id"];
     NSString *text = JSONArgument[@"text"];
@@ -324,10 +366,11 @@
             if ([voiceId hasPrefix:prefix]) {
                 voiceId = [voiceId stringByReplacingCharactersInRange:NSMakeRange(0, prefix.length) withString:@""];
             }
-            if (![self.lastVoice isEqualToString:voiceId]) {
-                [self.speech setVoice:voiceId license:self.licence.license userid:self.licence.user password:self.licence.passwd mode:@""];
-                self.lastVoice = voiceId;
-            }
+            // Always set the voice to ensure consistent internal state between utterances
+            if (self.debug) NSLog(@"ExtraTTS:speakText computed params voice=%@ device=%@ textLen=%lu ratePct=%.3f normPct=%.3f baseWPM=%.1f rate=%.1f pitchPct=%.3f pitch=%.1f volPct=%.3f vol=%.1f",
+                                  voiceId, (isPad ? @"iPad" : @"iPhone"), (unsigned long)text.length, ratePercent, normalizedPercent, baseWPM, rate, pitchPercent, pitch, volumePercent, volume);
+            [self.speech setVoice:voiceId license:self.licence.license userid:self.licence.user password:self.licence.passwd mode:@""];
+            self.lastVoice = voiceId;
             NSString *modifiedText = [NSString stringWithFormat:@"\\vce=speaker=%@\\%@", voiceId, text];
             
             self.speakTextCommand = command;
@@ -343,7 +386,43 @@
                                                                                    @"modified_volume" : @(volume)
                                                                                    }];
             
-            [self.speech startSpeakingString:modifiedText];
+            // Apply parameters AFTER setting voice to avoid resets by the engine
+            [self.speech setRate:rate];
+            [self.speech setVoiceShaping:pitch];
+            [self.speech setVolume:volume];
+            if (self.debug) NSLog(@"ExtraTTS:speakText params applied");
+
+            // Prepare audio session for TTS playback to avoid distortions and device mix issues
+            AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+            [audioSession setActive:NO withOptions:0 error:nil];
+            [audioSession setCategory:AVAudioSessionCategoryPlayback
+                           withOptions:AVAudioSessionCategoryOptionMixWithOthers
+                                 error:nil];
+            [audioSession setActive:YES withOptions:0 error:nil];
+            if (self.debug) NSLog(@"ExtraTTS:speakText audio session set (Playback+MixWithOthers)");
+
+            // If engine is currently speaking, stop it and give a tiny pause before starting new text
+            if ([self.speech isSpeaking]) {
+                if (self.debug) NSLog(@"ExtraTTS:speakText engine was speaking; stopping and delaying start");
+                [self.speech stopSpeaking];
+                // brief delay to let engine fully settle
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    if (self.debug) NSLog(@"ExtraTTS:speakText starting (delayed)");
+                    [self.speech startSpeakingString:modifiedText];
+                });
+            } else {
+                if (self.debug) NSLog(@"ExtraTTS:speakText starting (immediate)");
+                [self.speech startSpeakingString:modifiedText];
+            }
+
+            // Start monitor to ensure completion callback even if delegate is not fired on some devices
+            [self invalidateSpeakMonitorTimer];
+            self.speakMonitorTimer = [NSTimer scheduledTimerWithTimeInterval:0.3
+                                                                      target:self
+                                                                    selector:@selector(monitorSpeakingTimerFired:)
+                                                                    userInfo:nil
+                                                                     repeats:YES];
+            if (self.debug) NSLog(@"ExtraTTS:speakText monitor timer started");
             
             return;
         }
@@ -369,7 +448,14 @@
         self.speakTextCommand = nil;
         self.speakTextParams = nil;
     }
+    [self invalidateSpeakMonitorTimer];
     [self.speech stopSpeaking];
+    // Return audio session to ambient
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    [audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    [audioSession setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+    [audioSession setActive:YES withOptions:0 error:nil];
+    if (self.debug) NSLog(@"ExtraTTS:stopSpeakingText done");
     [self sendOKWithCommand:command message:nil];
 }
 
@@ -377,11 +463,20 @@
 
 - (void)speechSynthesizer:(AcapelaSpeech *)sender didFinishSpeaking:(BOOL)finishedSpeaking
 {
+    // Invalidate monitor to avoid duplicate callbacks
+    [self invalidateSpeakMonitorTimer];
+    if (self.debug) NSLog(@"ExtraTTS:delegate didFinishSpeaking=%@", (finishedSpeaking ? @"YES" : @"NO"));
     if (self.speakTextCommand && self.speakTextParams) {
         [self sendOKWithCommand:self.speakTextCommand parameters:self.speakTextParams];
         self.speakTextCommand = nil;
         self.speakTextParams = nil;
     }
+    // Return audio session to ambient
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    [audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    [audioSession setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+    [audioSession setActive:YES withOptions:0 error:nil];
+    if (self.debug) NSLog(@"ExtraTTS:delegate finished cleanup done");
 }
 
 - (void)speechSynthesizer:(AcapelaSpeech *)sender didFinishSpeaking:(BOOL)finishedSpeaking textIndex:(int)index
@@ -402,7 +497,18 @@
 - (void)speechSynthesizer:(AcapelaSpeech *)sender didEncounterSyncMessage:(NSString *)errorMessage
 {
     if (self.speakTextCommand) {
+        if (self.debug) NSLog(@"ExtraTTS:delegate didEncounterSyncMessage: %@", errorMessage);
         [self sendErrorWithCommand:self.speakTextCommand message:errorMessage];
+        // Clear any stuck state since this path represents a failure
+        self.speakTextCommand = nil;
+        self.speakTextParams = nil;
+        [self invalidateSpeakMonitorTimer];
+        // Return audio session to ambient
+        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+        [audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+        [audioSession setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+        [audioSession setActive:YES withOptions:0 error:nil];
+        if (self.debug) NSLog(@"ExtraTTS:delegate error cleanup done");
     }
 }
 
@@ -483,6 +589,34 @@
 {
     CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:status messageAsArray:array];
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+}
+
+- (void)invalidateSpeakMonitorTimer
+{
+    if (self.speakMonitorTimer) {
+        [self.speakMonitorTimer invalidate];
+        self.speakMonitorTimer = nil;
+    }
+}
+
+- (void)monitorSpeakingTimerFired:(NSTimer *)timer
+{
+    // If engine finished but delegate did not fire, clean up now
+    if (!self.speech || ![self.speech isSpeaking]) {
+        if (self.debug) NSLog(@"ExtraTTS:monitor detected finish (poll)");
+        if (self.speakTextCommand && self.speakTextParams) {
+            [self sendOKWithCommand:self.speakTextCommand parameters:self.speakTextParams];
+            self.speakTextCommand = nil;
+            self.speakTextParams = nil;
+        }
+        [self invalidateSpeakMonitorTimer];
+        // Return audio session to ambient
+        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+        [audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+        [audioSession setCategory:AVAudioSessionCategoryAmbient withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
+        [audioSession setActive:YES withOptions:0 error:nil];
+        if (self.debug) NSLog(@"ExtraTTS:monitor cleanup done");
+    }
 }
 
 @end
