@@ -35,6 +35,7 @@ import org.json.JSONObject;
 
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.os.Environment;
 
 
 /**
@@ -58,6 +59,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
   
   @Override
   public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
+    
     if (action.equals("echo")) {
       String message = args.getString(0);
       this.echo(message, callbackContext);
@@ -71,20 +73,18 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     } else if(action.equals("getAvailableVoices")) {
       availableVoices(callbackContext);
       return true;
-    } else if(action.equals("downloadVoice")) {
-      downloadVoice(args, callbackContext);
-      return true;
-    } else if(action.equals("deleteVoice")) {
-      deleteVoice(args, callbackContext);
-      return true;
     } else if(action.equals("speakText")) {
       speakText(args, callbackContext, false);
       return true;
     } else if(action.equals("stopSpeakingText")) {
       stopText(callbackContext);
       return true;
-    } else if(action.equals("renderText")) {
-      speakText(args, callbackContext, true);
+    } else if(action.equals("downloadVoice")) {
+      downloadVoice(args, callbackContext);
+      return true;
+    } else if(action.equals("deleteVoice")) {
+      deleteVoice(args, callbackContext);
+      return true;
     }
     return false;
   }
@@ -97,8 +97,8 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     TTS.setLog(true);
 
     // NOTE: set this to false and paste in your new license value
-    boolean demo_license = true;
-    TTS.setLicense(0x444b4453,0x11de4055,"\"5263 0 SDKD #EVALUATION#SDK-demo-Acapela-group\"\nVGm3Ie@Oi$56NUOwSUZxje%Zi@M%ejX2!eXhovWviS2ZZQgAl2gt8RJCejPrk8k#\nTaUxVYANC%RG39EaCr8qOhBNmw@BI%JA3gn9yi%2NkMluDnq\nY6Z7o8CzkPK5p2G$xNFobT##\n"); 
+    boolean demo_license = false;
+    TTS.setLicense(0x61503870,0x0052ff85,"\"3072 0 p8Pa #COMMERCIAL#CoughDrop-SouthJordan-UnitedStatesofAmerica\"\nT%ULjMdwyH4mbctCeWy2xJ2LyTesMOPOyrKIYdFtgvM3V5anOGyPh9sQw2QK3qp%qO%2z9CLt!IoE!Ocd9Rs$CUK%pc#\nSS7EE6IRSe%h2mJ@OlA64qSd6GtuSea2hcPSa7pOr@eCKx%C\nWKeoyZFVnoTz6rAjWB8ctT##\n");
 	    
     if(demo_license) {
       AlertDialog.Builder LicenseDialog = new AlertDialog.Builder(cordova.getActivity());
@@ -154,30 +154,13 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
       try {
         if(lang == null) { lang = "en"; }
         TTS.load(lang,"");
-        loadedVoice = lang;
+        loadedVoice = "acap:" + lang;
         TTS.getLanguage();
       } catch(Exception e) { }
       callbackContext.success(res);
     }
   }
 
-  private void downloadProgress(double percent, CallbackContext callbackContext) throws JSONException{
-    double trimmedPercent = Math.round(percent * 100.0) / 100.0;
-    JSONObject status = new JSONObject();
-    status.put("percent", trimmedPercent);
-    status.put("done", false);
-    if(percent >= 1.0) {
-      status.put("percent", 1.0);
-      status.put("done", true);
-      callbackContext.success(status);
-    } else if(lastDownloadPercent != trimmedPercent) {
-      lastDownloadPercent = trimmedPercent;
-      PluginResult result = new PluginResult(PluginResult.Status.OK, status);
-      result.setKeepCallback(true);
-      callbackContext.sendPluginResult(result);
-    }
-  }
-  
   private void downloadVoice(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
     if(!this.ready) { 
       callbackContext.error("not ready");
@@ -187,32 +170,34 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
             try {
               String voiceUrl = args.getJSONObject(0).getString("voice_url");
               
-              Log.d(TAG, "getting file...");
               URL url = new URL(voiceUrl);
               URLConnection connection = url.openConnection();
               connection.connect();
 
               int lengthOfFile = connection.getContentLength();
-              if(lengthOfFile == 0) {
-                lengthOfFile = 50000000;
+              if(lengthOfFile <= 0) { 
+                callbackContext.error("invalid length");
+                return;
+              }
+              if(storageLocation == null) {
+                init(new CallbackContext(null, null));
               }
               double totalChunks = lengthOfFile / 1024;
-
-              Log.d(TAG, "Length of file: " + lengthOfFile);
 
               dirChecker(storageLocation);
 
               InputStream input = new BufferedInputStream(url.openStream());
               OutputStream output = new FileOutputStream(storageLocation + "voice.zip");
 
-              double nChunks = 0;
-              int count;
               byte data[] = new byte[1024];
 
+              int count;
+              int nChunks = 0;
               while ((count = input.read(data)) != -1) {
                 nChunks += 1;
                 output.write(data, 0, count);
-                downloadProgress(Math.min(0.75, 0.75 * nChunks / totalChunks), callbackContext);
+                double progress = Math.min(0.75, 0.75 * nChunks / totalChunks);
+                downloadProgress(progress, callbackContext);
               }
 
               output.flush();
@@ -220,8 +205,7 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
               input.close();
               
               downloadProgress(0.75, callbackContext);
-              Log.d(TAG, "Unzipping file...");
-        
+              
               FileInputStream fin = new FileInputStream(storageLocation + "voice.zip"); 
               ZipInputStream zin = new ZipInputStream(fin); 
               ZipEntry ze = null; 
@@ -234,13 +218,11 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
                   // SecurityException, or ignore file
                 } else {
                   nEntries += 1;
-                  Log.d(TAG, "Unzipping " + ze.getName()); 
-
                   if(ze.isDirectory()) { 
                     dirChecker(storageLocation + ze.getName()); 
                   } else { 
                     FileOutputStream fout = new FileOutputStream(storageLocation + ze.getName()); 
-              
+                    
                     for (int c = zin.read(data); c != -1; c = zin.read(data)) { 
                       fout.write(data, 0, c); 
                     } 
@@ -251,10 +233,11 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
                 }
                 downloadProgress(0.74 + Math.min(0.25, 0.25 * nEntries / totalEntries), callbackContext);
               } 
-        
-              File file = new File(storageLocation + "voice.zip");
-              file.delete();
               zin.close(); 
+              
+              File f = new File(storageLocation + "voice.zip");
+              f.delete();
+              
               downloadProgress(1.0, callbackContext);
             } catch (Exception e) {
               callbackContext.error(e.getMessage() + " " + e.getStackTrace().length);
@@ -305,7 +288,8 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
       } catch(JSONException e) { }
 
       if((loadedVoice == null || !loadedVoice.equals(voiceId)) && voiceId != null) {
-        TTS.load(voiceId.replaceAll("acap:", ""),"");
+        String cleanVoiceId = voiceId.replaceAll("acap:", "");
+        TTS.load(cleanVoiceId,"");
         loadedVoice = voiceId;
         TTS.getLanguage();
       }
@@ -390,6 +374,31 @@ public class ExtraTTS extends CordovaPlugin implements iTTSEventsCallback {
     }
     if (!f.delete())
       throw new FileNotFoundException("Failed to delete file: " + f);
+  }
+  
+  private void downloadProgress(double percent, CallbackContext callbackContext) {
+    // Only send progress updates, not completion
+    if (percent < 1.0) {
+      try {
+        JSONObject progressObj = new JSONObject();
+        progressObj.put("percent", percent);
+        
+        PluginResult result = new PluginResult(PluginResult.Status.OK, progressObj);
+        result.setKeepCallback(true); // Keep callback alive for multiple progress updates
+        callbackContext.sendPluginResult(result);
+      } catch (JSONException e) {
+        // Silent fail on progress updates
+      }
+    } else {
+      // Send completion signal
+      try {
+        JSONObject completeObj = new JSONObject();
+        completeObj.put("done", true);
+        callbackContext.success(completeObj);
+      } catch (JSONException e) {
+        callbackContext.success();
+      }
+    }
   }
   
 }
